@@ -13,6 +13,7 @@ class Stdout extends EventEmitter {
 	write = (frame: string) => {
 		this.frames.push(frame);
 		this._lastFrame = frame;
+		this.emit('frame');
 	};
 
 	lastFrame = () => this._lastFrame;
@@ -25,6 +26,7 @@ class Stderr extends EventEmitter {
 	write = (frame: string) => {
 		this.frames.push(frame);
 		this._lastFrame = frame;
+		this.emit('frame');
 	};
 
 	lastFrame = () => this._lastFrame;
@@ -77,6 +79,10 @@ class Stdin extends EventEmitter {
 	};
 }
 
+type WaitForOptions = {
+	timeout?: number;
+};
+
 type Instance = {
 	rerender: (tree: ReactElement) => void;
 	unmount: () => void;
@@ -86,6 +92,8 @@ type Instance = {
 	stdin: Stdin;
 	frames: string[];
 	lastFrame: () => string | undefined;
+
+	waitFor: (assertion: () => void, options?: WaitForOptions) => Promise<void>;
 };
 
 const instances: InkInstance[] = [];
@@ -118,6 +126,7 @@ export const render = (tree: ReactElement): Instance => {
 		stdin,
 		frames: stdout.frames,
 		lastFrame: stdout.lastFrame,
+		waitFor: createWaitFor(stdout),
 	};
 };
 
@@ -127,3 +136,41 @@ export const cleanup = () => {
 		instance.cleanup();
 	}
 };
+
+function createWaitFor(
+	stdout: Stdout,
+): (assertion: () => void, options?: WaitForOptions) => Promise<void> {
+	return async (assertion, options) => {
+		const {timeout = 1000} = options ?? {};
+
+		let lastError: Error | undefined;
+
+		// Check immediately — the frame may already be there.
+		try {
+			assertion();
+			return;
+		} catch (error: unknown) {
+			lastError = error instanceof Error ? error : new Error(String(error));
+		}
+
+		return new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				stdout.off('frame', onFrame);
+				reject(lastError ?? new Error('waitFor timed out'));
+			}, timeout);
+
+			function onFrame() {
+				try {
+					assertion();
+					clearTimeout(timer);
+					stdout.off('frame', onFrame);
+					resolve();
+				} catch (error: unknown) {
+					lastError = error instanceof Error ? error : new Error(String(error));
+				}
+			}
+
+			stdout.on('frame', onFrame);
+		});
+	};
+}

@@ -78,6 +78,35 @@ const {unmount} = render(<Test/>);
 unmount();
 ```
 
+#### waitFor(assertion, options?)
+
+Type: `function`
+
+Wait for an assertion to pass, re-checking each time a new frame is rendered. If the assertion doesn't pass within the timeout, the returned promise rejects with the last assertion error.
+
+##### assertion
+
+Type: `function`
+
+Function that throws an error when the expected condition is not met.
+
+##### options.timeout
+
+Type: `number`\
+Default: `1000`
+
+Maximum time in milliseconds to wait for the assertion to pass.
+
+```jsx
+const {lastFrame, waitFor} = render(<MyApp/>);
+
+await waitFor(() => {
+	if (lastFrame() !== 'Hello World') {
+		throw new Error('Expected "Hello World"');
+	}
+});
+```
+
 #### stdin
 
 Type: `object`
